@@ -1,0 +1,240 @@
+---
+title: "Heart Stroke Prediction"
+author: "Sun Gajiwala, Siva Chandan Chakka & Adarsh Patel"
+date: "`r format(Sys.time(),'%b %d, %y')`"
+output: 
+      html_document:
+        toc: true
+        toc_float:
+          collapse: false
+          smooth_scroll: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align='center',echo = TRUE,warning = FALSE, message = FALSE)
+```
+
+
+```{r}
+# The file HeartStroke.csv contains a subset of information on actual 
+# list of heart stroke incidents in the United States that involved one of two 
+# levels : 1 or 0 i.e Heart Stroke or No Stroke. For each incident,
+# additional information is recorded, such as hypertension,heart disease,smoking habits
+# bmi,glucose level,work related and personal life related data. 
+
+# Our aim is to develop a model which predicts which person is likely to suffer from stroke if given the above set of data
+```
+
+## Importing The Dataset
+
+```{r}
+d = read.csv("datasets/HeartStroke.csv")
+#view(d)
+```
+
+## Data Preprocessing
+
+```{r}
+library(naniar)
+
+# Removing the Id column as it is not relevant for our analysis.
+d<-d[,-1] 
+
+# We need to check for the null values in our Dataset.
+# Since we have N/A values in our BMI column, lets remove the rows with N/A values in them.
+
+d<-d[!d$bmi == "N/A", ]
+d$bmi<-as.integer(d$bmi)
+```
+
+## Exploratory Data Analysis
+
+```{r}
+library(ggplot2)
+#Bar plot of stroke vs worktype
+ggplot(d) +
+  geom_bar(aes(x = work_type, y = stroke), stat = "identity",fill="yellow")+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+  ggtitle("Number of Heart Strokes VS Work Type") +
+  xlab("Work Type") + ylab("Number of Strokes") 
+
+#As we can clearly see the people who have never worked have never encountered
+#a stroke. This study suggests that work pressure is one of the reasons for 
+#heart problems.
+
+#Also children have the least amount of heart strokes
+```
+```{r}
+#Bar plot of smoking status vs stroke
+ggplot(d) +
+  geom_bar(aes(x = smoking_status, y = stroke), stat = "identity",fill="red")+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+  ggtitle("Number of Heart Strokes VS Smoking Status") +
+  xlab("smoking status") + ylab("Number of Strokes") #Bar plot of smoking status vs stroke
+#Here as we can see the people who never smoke tend to have more heart stroke.
+#people who formerly smoke are alos higher than people who smoke regularly.
+```
+
+```{r}
+#Bar plot of smoking status vs marital status
+ggplot(d) +
+  geom_bar(aes(x = ever_married, y = stroke), stat = "identity",fill="cyan")+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+  ggtitle("Number of Heart Strokes VS Marital Status") +
+  xlab("Marital Status") + ylab("Number of Strokes")
+
+# We can observe that majority of the people who were married suffered from a heart Stroke
+# Also the number of strokes can reach aroung 220
+```
+
+```{r}
+#Bar plot of Residence Status vs stroke
+ggplot(d) +
+  geom_bar(aes(x = Residence_type, y = stroke), stat = "identity",fill="blue")+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+  ggtitle("Number of Heart Strokes VS Living Choices") +
+  xlab("Residence Type") + ylab("Number of Strokes") 
+
+#People living in urban areas tend to have more risk of heart strokes as 
+#compared to rural areas.
+```
+
+```{r}
+#Lets see the correlation between all the features in our dataset
+# Corelation matrix can be created using R cor() function
+res<-cor(d[c(11,3,4,8,9)],)
+str(d)
+
+cormat <- round(res,2)
+head(cormat)
+
+# WE use the library reshape to melt the correlation matrix
+library(reshape2)
+melted_cormat <- melt(cormat)
+head(melted_cormat)
+
+# We use the function geom_title to visualize the correlation matrix
+library(ggplot2)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()+
+  geom_text(aes(Var2, Var1, label = value), color = "black", size = 4)+
+  scale_fill_gradient2(low = "blue", high = "cyan", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Heart Stroke\nCorrelation") 
+
+
+
+```
+
+#### We can observe from the correlation heatmap that the features are tightly correlated to each other, So for prediction we can use Naive Bayes classifier which works better when it comes to dealing with independent variables.
+
+```{r}
+# Since we plan on using the Naive Bayes classifier, we need to convert our numerical variables into categorical variables.
+# The outcome variable is binary [0,1] which means yes or no.
+data <- d
+d$stroke <- ifelse(d$stroke == 1,"Y","N")
+class(d$stroke)
+
+stroke.count = sum(d$stroke == "Y")
+stroke.count
+percent.stroke = stroke.count/dim(d)[1]
+percent.stroke * 100
+```
+
+#### We can see that `r percent.stroke * 100` % of patients from our dataset suffered from HeartStroke.
+
+
+```{r}
+
+# Converting Numerical to Categorical for naive Bayes Classification
+
+d$avg_glucose_level <- round(d$avg_glucose_level/10)
+d$bmi               <- round(d$bmi/10)
+str(d)
+d$avg_glucose_level <-factor(d$avg_glucose_level)
+d$age<-factor(d$age)
+d$hypertension      <-factor(d$hypertension)
+d$heart_disease     <-factor(d$heart_disease)
+d$bmi               <-factor(d$bmi)
+```
+
+## Naive Bayes
+
+### Splitting Data for Training and Validation
+
+```{r}
+# Setting seed to 1 for reproduciblity of randomness
+set.seed(1)
+train.rows       <- sample(row.names(d), 0.6*dim(d)[1])  
+valid.rows       <- setdiff(row.names(d), train.rows)  
+train.df         <- d[train.rows, ]
+valid.df         <- d[valid.rows, ]
+View(train.df)
+```
+
+### Naive Bayes classifier 
+
+```{r}
+
+# Since Stroke is our Target column, we divide the dataset according to that
+
+library(e1071)
+stroke.nb    <- naiveBayes(stroke ~ ., data = train.df)
+stroke.nb
+```
+
+```{r}
+# Applying model on Validation Data 
+pred.prob   <- predict(stroke.nb, newdata = valid.df, type = "raw")
+
+pred.class  <- predict(stroke.nb, newdata = valid.df, type = "class")
+
+df <- data.frame(actual = valid.df$stroke, predicted = pred.class, pred.prob)
+df
+```
+
+```{r}
+# Viewing the probablities for dataset when d[stroke] = 'Y'
+sorted.df = df[order(df$Y),]
+sorted.df
+```
+
+### Checking Naive Bayes Model Accuracy
+
+```{r}
+library(caret)
+
+# Accuracy while training the Dataset
+
+pred.class <- predict(stroke.nb, newdata = train.df)
+confusionMatrix(as.factor(pred.class), as.factor(train.df$stroke), positive = "Y")
+
+# Accuracy while validating the Dataset
+pred.class <- predict(stroke.nb, newdata = valid.df)
+confusionMatrix(as.factor(pred.class), as.factor(valid.df$stroke),positive = "Y")
+```
+
+#### We got an accuracy of ***92.84%*** while training the model and ***92.46*** % while testing the model on validation data.
+
+## Testing The trained model on a new Dataset
+
+```{r}
+new.df  = read.csv("datasets/StrokeTest.csv")
+
+new.df$avg_glucose_level<-factor(new.df$avg_glucose_level)
+new.df$age<-factor(new.df$age)
+new.df$hypertension<-factor(new.df$hypertension)
+new.df$heart_disease<-factor(new.df$heart_disease)
+new.df$bmi<-factor(new.df$bmi)
+
+
+pred.prob <- predict(stroke.nb, newdata = new.df, type = "raw")
+
+pred.class <- predict(stroke.nb, newdata = new.df, type = "class")
+str(new.df)
+df <- data.frame(actual = "?", predicted = pred.class, pred.prob)
+df
+
+```
+
+#### According to the prediction the 1st 3rd and 8th patient are likely to suffer from a heart stroke.
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
